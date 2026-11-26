@@ -6553,12 +6553,27 @@ const BR = [
   //  o3f：扇3エナの起動、場外のファイナル持ちのどれをリムーブへ
   { k:'o3f', re:/^忍野 扇：場外の【ファイナル】を持つカードを1枚選んでリムーブエリアへ/, key:pk=>pk.length?pk[0].no:'none', alts:(ok)=>brByNo(ok) },
 ];
+// 他のデッキ（2026-11-26 やしょっち、試験中）：決まったリストの代わりに、1枚を選ぶ選択を全部枝分かれさせる
+//  ・選べるカードが全部、手札・場・場外・リムーブ（見えている所）にある時だけ。山札や見たカード（公開エリア）からの選択は先の札を覗くことになるので枝分かれさせない
+//  ・カード番号ごとに安い順で3つまで、「選ばない」も候補（選ばなくてよい時）
+TP.brAll = false; TP.brAllSeat = null;
+//  TP.brDecks：このデッキだけ常に入れる（2026-11-27 採用：18デッキで試して、はっきり上がったのはファウル（5）の +11.7±3.4 だけ。全体では -0.5±0.7）
+TP.brDecks = [5];
+function brAllOn(p){ if(TP.brAll) return TP.brAllSeat==null || TP.brAllSeat===p; const di=deckIdxV(p); return di>=0 && TP.brDecks.includes(DECKS[di].id); }
+function brGeneric(title,ok,min,max,p){
+  if(max!==1 || ok.length<1) return null;
+  if(!ok.every(c=>{ const f=findCard(c.id); return f && ['hand','front','energy','outside','remove'].includes(f.zone) && (f.zone!=='hand' || f.p===p); })) return null;
+  const k='g:'+title.replace(/[0-9０-９]+/g,'#').slice(0,40);
+  return { k, key:pk=>pk.length?pk[0].no:'none', alts:(ok,min)=>{ const out=brByNo(ok); if(min===0) out.push({key:'none', pick:[]}); return out.length>1?out:[]; } };
+}
 function brByNo(ok){ const seen=new Set(), out=[]; for(const c of [...ok].sort((a,b)=>cval(a)-cval(b))){ if(seen.has(c.no)) continue; seen.add(c.no); out.push({key:c.no, pick:[c]}); if(out.length>=3) break; } return out; }
 function brNm(c){ return isOikura(c)?'I':isOugi(c)?'O':'K'; }
 { const _cc=cpuChoose; cpuChoose=function(title,ok,min,max,opts,p){
   const def=_cc(title,ok,min,max,opts,p);
-  if(!TP.branch || !S || !isGreenMGS(p)) return def;
-  const b=BR.find(x=>x.re.test(title)); if(!b || !Array.isArray(def)) return def;
+  if(!TP.branch || !S || !Array.isArray(def)) return def;
+  let b = isGreenMGS(p) ? BR.find(x=>x.re.test(title)) : null;
+  if(!b && brAllOn(p)) b=brGeneric(title,ok,min,max,p);
+  if(!b) return def;
   const alts=b.alts(ok,min,p), f=CPU.chForce && CPU.chForce[b.k];
   if(f){ const a=alts.find(x=>x.key===f); if(a) return a.pick; }
   const dk=b.key(def), other=alts.map(a=>a.key).filter(k=>k!==dk);
@@ -6842,7 +6857,7 @@ body.seat1 #P1{order:3} body.seat1 .board .divider{order:2} body.seat1 #P0{order
 #btnRejoin{display:none} body.netgame.seat1 #btnRejoin{display:inline-block}
 </style>
 <div id="netlobby"><div class="nlbox">
-  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-7</span></h2>
+  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/27-1</span></h2>
   <p>二人がそれぞれのスマホでこのページを開いて遊ぶ卓。ルールの処理は今の一人回し卓と同じ。<br>自分の手札・山札・ライフは相手の画面では裏向き。<br>つなぐ時だけ外の中継サーバー（PeerJS）を使う。</p>
   <label>名前</label><input id="nlName" maxlength="12" placeholder="名前">
   <label>使うデッキ</label><select id="nlDeck"></select>
