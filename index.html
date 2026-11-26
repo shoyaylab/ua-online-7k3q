@@ -6835,7 +6835,7 @@ body.seat1 #P1{order:3} body.seat1 .board .divider{order:2} body.seat1 #P0{order
 #btnRejoin{display:none} body.netgame.seat1 #btnRejoin{display:inline-block}
 </style>
 <div id="netlobby"><div class="nlbox">
-  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-5</span></h2>
+  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-6</span></h2>
   <p>二人がそれぞれのスマホでこのページを開いて遊ぶ卓。ルールの処理は今の一人回し卓と同じ。<br>自分の手札・山札・ライフは相手の画面では裏向き。<br>つなぐ時だけ外の中継サーバー（PeerJS）を使う。</p>
   <label>名前</label><input id="nlName" maxlength="12" placeholder="名前">
   <label>使うデッキ</label><select id="nlDeck"></select>
@@ -6931,7 +6931,7 @@ function localOnly(t){
 }
 function send(m){ if(NET.conn && NET.conn.open) try{ NET.conn.send(m); }catch(e){} }
 NET.send = send;
-const out = m => { NET.log.push(m); send(m); };   // 自分の操作：記録してから送る（相手が開き直した時に、この記録で追いつかせる）
+const out = m => { m.seq = NET.log.length; NET.log.push(m); send(m); };   // seq：記録の何手目か（抜けた手があれば、相手はそこで待って送り直してもらう）   // 自分の操作：記録してから送る（相手が開き直した時に、この記録で追いつかせる）
 document.addEventListener('click', e=>{
   if(!NET.on || NET.rep) return;
   const t = e.target;
@@ -6958,9 +6958,10 @@ function run(){
   _ct(NET.waitT);
   while(NET.q.length){
     const m = NET.q[0];
-    if(m.fp !== fp() || NET.tm>0){
+    if(m.seq!=null && m.seq < NET.log.length){ NET.q.shift(); continue; }   // もう再現した手（送り直しで重なった分）
+    if((m.seq!=null && m.seq > NET.log.length) || m.fp !== fp() || NET.tm>0){
       m.tries = (m.tries||0)+1;
-      if(m.tries > 200){ NET.warn='相手の画面とずれたかもしれない（相手の操作を再現できない）。'; shield(); }
+      if(m.tries % 100 === 0){ send({t:'need', n:NET.log.length}); }   // 5秒たっても進めない：間の操作が届いていないかもしれないので、送り直してもらう
       NET.waitT = _st(run, 50); return;
     }
     let ok = true;
@@ -6972,7 +6973,7 @@ function run(){
     }catch(err){ console.error(err); }
     NET.rep = false;
     if(!ok){ m.tries=(m.tries||0)+1; if(m.tries>200){ NET.warn='相手の画面とずれたかもしれない（押した所が見つからない）。'; shield(); NET.q.shift(); continue; } NET.waitT=_st(run,50); return; }
-    const d = NET.q.shift(); NET.log.push({t:d.t, loc:d.loc, id:d.id, i:d.i, fp:d.fp});
+    const d = NET.q.shift(); NET.log.push({t:d.t, loc:d.loc, id:d.id, i:d.i, fp:d.fp, seq:NET.log.length});
     if(NET.catching){ NET.catching--; NET.warn = NET.catching ? `途中から戻っている…（あと${NET.catching}手）` : ''; if(!NET.catching){ $('animOn').checked = NET.anim; } }
   }
   shield();
@@ -7010,7 +7011,7 @@ function onData(m){
       const n0 = NET.names[0], n1 = NET.names[1]===n0 ? n0+'2' : NET.names[1];
       const st = { t:'start', seed:(Math.random()*4294967296)>>>0, d0:+$('nlDeck').value, d1:+m.deck, n0, n1 };
       send(st); begin(st);
-    } else if(NET.started){ status('つなぎ直した。'); NET.warn=''; shield(); }
+    } else if(NET.started){ status('つなぎ直した。'); NET.warn=''; shield(); sendTail(+m.n||0); }
   }
   else if(m.t==='start'){ if(!NET.started) begin(m); }
   else if(m.t==='resume'){ if(NET.started || !m.start) return;   // 開き直した側：同じ並びで始めて、記録を早送りで再現する
@@ -7018,16 +7019,29 @@ function onData(m){
     const L = Array.isArray(m.log) ? m.log : []; NET.catching = L.length; NET.warn = L.length ? `途中から戻っている…（あと${L.length}手）` : '';
     for(const x of L) NET.q.push(x); shield(); run(); }
   else if(m.t==='click' || m.t==='menu' || m.t==='listuse'){ NET.q.push(m); run(); }
-  else if(m.t==='hb'){ if(m.fp===fp() && m.h!==stateHash() && !NET.q.length){ NET.warn='相手の画面と盤面がずれている。'; shield(); } }
+  else if(m.t==='need'){ sendTail(+m.n||0); }
+  else if(m.t==='tail'){   // 届いていなかった操作：記録の続きから並べ直して再現する（待っていた分は、この中に含まれている）
+    if(!NET.started || !Array.isArray(m.log)) return;
+    const have=new Set(NET.q.map(x=>x.seq)); for(const x of m.log) if(x.seq>=NET.log.length && !have.has(x.seq)) NET.q.push(x);
+    NET.q.sort((a,b)=>(a.seq??1e9)-(b.seq??1e9)); NET.warn=''; run(); }
+  else if(m.t==='hb'){
+    if(NET.started && (+m.n||0) > NET.log.length + NET.q.length) send({t:'need', n:NET.log.length});
+    if(m.fp===fp() && m.h!==stateHash() && !NET.q.length && NET.tm===0){ NET.bad=(NET.bad||0)+1;
+      if(NET.bad>=2){ NET.bad=0; if(NET.seat===1){ NET.warn='相手の画面と盤面がずれた。部屋を作った側に合わせて組み直している…'; shield(); send({t:'needall'}); } } }
+    else NET.bad=0; }
+  else if(m.t==='needall'){ if(NET.started && NET.seat===0) send({t:'resync', start:NET.startMsg, log:NET.log}); }
+  else if(m.t==='resync'){ if(NET.seat!==1 || !m.start) return; NET.started=false; onData({t:'resume', start:m.start, log:m.log}); }
 }
+// 相手の記録が n 手までなら、その続きを送る
+function sendTail(n){ if(NET.started && n < NET.log.length) send({t:'tail', from:n, log:NET.log.slice(n)}); }
 function stateHash(){ if(!S) return ''; return S.P.map(pl=>[pl.deck.length,pl.hand.length,pl.life.length,pl.outside.length,pl.remove.length,...pl.front.map(s=>s.length?s[s.length-1].id+(s[s.length-1].rest?'r':''):'-'),...pl.energy.map(s=>s.length?s[s.length-1].id+(s[s.length-1].rest?'r':''):'-')].join(',')).join('|')+'|'+S.turn+S.phase; }
-setInterval(()=>{ if(NET.started) send({t:'hb', fp:fp(), h:stateHash()}); }, 2000);
+setInterval(()=>{ if(NET.started) send({t:'hb', fp:fp(), h:stateHash(), n:NET.log.length}); }, 2000);
 // 相手がページを閉じても「切れた」がすぐ来ないことがある。8秒なにも届かなければ切れたとみなす
 setInterval(()=>{ const c=NET.conn; if(!NET.started || !c || !c.open || !NET.seen || Date.now()-NET.seen < 8000) return; NET.conn=null; try{ c.close(); }catch(e){} lost(); }, 2000);
 function lost(){ NET.warn='接続が切れた。つなぎ直しを待っている…'; shield(); status('接続が切れた。'); if(NET.seat===1) retry(); }
 function wire(c){
   NET.conn = c;
-  c.on('open', ()=>{ NET.seen = Date.now(); status('つながった。'); $('nlStatus2').textContent=''; send({t:'hello', name:$('nlName').value.trim()||'', deck:+$('nlDeck').value, started:NET.started}); if(NET.started){ NET.warn=''; shield(); } });
+  c.on('open', ()=>{ NET.seen = Date.now(); status('つながった。'); $('nlStatus2').textContent=''; send({t:'hello', name:$('nlName').value.trim()||'', deck:+$('nlDeck').value, started:NET.started, n:NET.log.length}); if(NET.started){ NET.warn=''; shield(); } });
   c.on('data', onData);
   c.on('close', ()=>{ if(NET.conn!==c) return; NET.conn=null; lost(); });
   c.on('error', e=>status('通信エラー：'+(e&&e.type||e)));
