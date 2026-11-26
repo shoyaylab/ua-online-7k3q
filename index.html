@@ -6824,7 +6824,9 @@ function mvRollOn(p){ return LOOK.mvRoll===true || (LOOK.mvRoll==='madoka' && is
 #netlobby .or{text-align:center;color:var(--sub,#aab);margin:18px 0 4px;font-size:13px}
 #nlStatus{margin-top:16px;font-size:18px;font-weight:700;color:#7fb8ff;text-align:center}
 #nlStatus2{text-align:center;color:var(--sub,#aab);font-size:13px;margin-top:4px}
-#netban{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--hh,44px) + 6px);z-index:150;background:#000d;color:#ffd36a;padding:6px 14px;border-radius:16px;font-size:13px;pointer-events:none;max-width:92vw;text-align:center}
+#netban{position:fixed;left:50%;transform:translateX(-50%);top:4px;z-index:150;background:#000c;color:#ffd36a;padding:2px 10px;border-radius:10px;font-size:11px;pointer-events:none;max-width:94vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 下のボタンの帯を1行に（狭い画面で2行になり、盤面が小さくなっていた） */
+@media (max-width:430px){ body.netgame header{flex-wrap:nowrap;gap:2px} body.netgame #hint{display:none} body.netgame .phc{font-size:9px;padding:1px 2px} body.netgame header button{padding:3px 5px} body.netgame header .stat{padding:2px 3px;max-width:6.5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} }
 body.netwait #pop{visibility:hidden!important}
 body.netwaitm #modalBox{visibility:hidden!important}
 body.netgame #btnUndo,body.netgame #btnStart,body.netgame #btnImport,body.netgame #btnExport,body.netgame label:has(#hideHand),body.netgame label:has(#rulesOn),body.netgame label:has(#cpuOn),body.netgame #deckSel0,body.netgame #deckSel1,body.netgame .drawer h4{display:none!important}
@@ -6833,7 +6835,7 @@ body.seat1 #P1{order:3} body.seat1 .board .divider{order:2} body.seat1 #P0{order
 #btnRejoin{display:none} body.netgame.seat1 #btnRejoin{display:inline-block}
 </style>
 <div id="netlobby"><div class="nlbox">
-  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-4</span></h2>
+  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-5</span></h2>
   <p>二人がそれぞれのスマホでこのページを開いて遊ぶ卓。ルールの処理は今の一人回し卓と同じ。<br>自分の手札・山札・ライフは相手の画面では裏向き。<br>つなぐ時だけ外の中継サーバー（PeerJS）を使う。</p>
   <label>名前</label><input id="nlName" maxlength="12" placeholder="名前">
   <label>使うデッキ</label><select id="nlDeck"></select>
@@ -6880,6 +6882,21 @@ const _cm = closeModal; closeModal = function(silent){ NET.localModal=false; con
 const _menu = openMenu; openMenu = function(x,y,c,target){ NET.menuCard = c && c.id; return _menu.apply(this,arguments); };
 const _vl = viewList; viewList = function(){ if(NET.on) NET.localModal = true; return _vl.apply(this,arguments); };
 
+// ---------- 選択のウィンドウを、選ぶカードに重ならない所へ ----------
+//  （小さい画面では公開エリアが狭く、ウィンドウが縦に伸びて、公開エリアの選ぶカードを隠していた。2026-11-26）
+const _pp = placePop; placePop = function(){
+  _pp.apply(this, arguments);
+  if(!NET.on) return;
+  const pop=$('pop'); if(pop.style.display!=='block') return;
+  const cards=[...document.querySelectorAll('.board .card.selectable, .board .card.focus, .slot.target')].map(e=>e.getBoundingClientRect()).filter(r=>r.width);
+  if(!cards.length) return;
+  const hit=(t)=>{ const h=pop.offsetHeight, w=pop.offsetWidth, l=parseFloat(pop.style.left)||0; return cards.reduce((n,r)=>n+Math.max(0,Math.min(t+h,r.bottom)-Math.max(t,r.top))*Math.max(0,Math.min(l+w,r.right)-Math.max(l,r.left)),0); };
+  const top0=parseFloat(pop.style.top)||0; if(!hit(top0)) return;
+  const m=$('main').getBoundingClientRect(), h=pop.offsetHeight;
+  const cand=[m.top+4, m.bottom-h-4, ...cards.map(r=>r.bottom+6), ...cards.map(r=>r.top-h-6)].filter(t=>t>=m.top && t+h<=m.bottom);
+  let best=top0, bh=hit(top0); for(const t of cand){ const v=hit(t); if(v<bh){ bh=v; best=t; } }
+  pop.style.top=best+'px';
+};
 // ---------- 隠す ----------
 function shield(){
   if(!NET.on || !S) return;
@@ -7007,7 +7024,7 @@ function stateHash(){ if(!S) return ''; return S.P.map(pl=>[pl.deck.length,pl.ha
 setInterval(()=>{ if(NET.started) send({t:'hb', fp:fp(), h:stateHash()}); }, 2000);
 // 相手がページを閉じても「切れた」がすぐ来ないことがある。8秒なにも届かなければ切れたとみなす
 setInterval(()=>{ const c=NET.conn; if(!NET.started || !c || !c.open || !NET.seen || Date.now()-NET.seen < 8000) return; NET.conn=null; try{ c.close(); }catch(e){} lost(); }, 2000);
-function lost(){ NET.warn='相手との接続が切れた。相手が戻るのを待っている（相手は同じ部屋番号で開き直せば、途中から戻れる）。'; shield(); status('接続が切れた。'); if(NET.seat===1) retry(); }
+function lost(){ NET.warn='接続が切れた。つなぎ直しを待っている…'; shield(); status('接続が切れた。'); if(NET.seat===1) retry(); }
 function wire(c){
   NET.conn = c;
   c.on('open', ()=>{ NET.seen = Date.now(); status('つながった。'); $('nlStatus2').textContent=''; send({t:'hello', name:$('nlName').value.trim()||'', deck:+$('nlDeck').value, started:NET.started}); if(NET.started){ NET.warn=''; shield(); } });
@@ -7019,6 +7036,7 @@ function host(tries=0, want=null){
   const code = want || String(Math.floor(100000+Math.random()*900000));
   NET.peer = new Peer('uaonline-'+code);
   NET.peer.on('open', ()=>{ NET.code=code; status(`部屋番号 ${code}`); $('nlStatus2').textContent='この番号を相手に伝えて、待っていて。'; });
+  NET.peer.on('disconnected', ()=>{ try{ if(!NET.peer.destroyed) NET.peer.reconnect(); }catch(e){} });
   NET.peer.on('connection', c=>{ const old=NET.conn; NET.conn=c; if(old && old!==c) try{ old.close(); }catch(e){} wire(c); });   // 新しく来た方を使う（相手がページを閉じても、こちらでは切れたと分かるまで時間がかかることがある）
   NET.peer.on('error', e=>{ if(e.type==='unavailable-id' && want){ NET.peer.destroy(); status('その部屋番号は今使われている。開き直した直後なら、少し待ってからもう一度押して。そうでなければ別の番号にして。'); $('nlHost').disabled=$('nlJoin').disabled=false; } else if(e.type==='unavailable-id' && tries<5){ NET.peer.destroy(); host(tries+1); } else status('エラー：'+e.type); });
 }
@@ -7051,7 +7069,11 @@ NET.fit = fitReal;
 let fitT=0; const fitSoon=()=>{ _ct(fitT); fitT=_st(fitReal, 120); };
 addEventListener('resize', fitSoon); if(window.visualViewport) visualViewport.addEventListener('resize', fitSoon);
 addEventListener('orientationchange', ()=>_st(fitReal, 500));
-setInterval(()=>{ if(NET.started) fitReal(); }, 2000);   // 文字の読み込みなどで後から高さが変わることがある
+setInterval(()=>{ if(NET.started) fitReal(); }, 2000);
+// スマホでほかのアプリに切り替えると、通信が止まって切れることがある。画面に戻ってきたら、つなぎ直す
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden || !NET.started) return; NET.seen=Date.now();
+  if(NET.peer && NET.peer.disconnected && !NET.peer.destroyed) try{ NET.peer.reconnect(); }catch(e){}
+  if(NET.seat===1 && !(NET.conn && NET.conn.open)) join(NET.code, true); });   // 文字の読み込みなどで後から高さが変わることがある
 window.addEventListener('load', ()=>{
   const sel = $('nlDeck'); DECKS.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=d.label; sel.appendChild(o); });
   try{ const s=JSON.parse(localStorage.getItem('ua_online')||'null'); if(s){ $('nlName').value=s.n||''; if(DECKS.some(d=>d.id===s.d)) sel.value=s.d; } }catch(e){}
