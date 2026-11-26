@@ -2234,10 +2234,13 @@ const emptyFieldMinus2 = (c,p) => fieldCards(p).length===0 ? {e:-2} : null;
 // 相手のラインのキャラを自分の効果で別の枠へ動かす
 async function moveOppTo(x,zone,label){
   const opp=x.owner; const pl=S.P[opp];
-  const opts=[0,1,2,3].filter(s=>!pl[zone][s].length).map(s=>({p:opp,zone,slot:s,kind:'place'}));
-  if(!opts.length){ log(`${label}：${ZN[zone]}に空きがないので移動できない。`,1-opp); return false; }
-  const o=opts.length===1?opts[0]:await slotSelectP(opts,`${x.name} を${ZN[zone]}のどこへ移動する？`,null,x);
+  let opts=[0,1,2,3].filter(s=>!pl[zone][s].length).map(s=>({p:opp,zone,slot:s,kind:'place'}));
+  // 空きがない時：持ち主（相手）が枠を選び、そこにいたカードはリムーブエリアへ（2026-11-26 やしょっち）
+  const full=!opts.length;
+  if(full) opts=[0,1,2,3].map(s=>({p:opp,zone,slot:s,kind:'replace',target:pl[zone][s][pl[zone][s].length-1]}));
+  const o=opts.length===1?opts[0]:await slotSelectP(opts,full?`${x.name} を${ZN[zone]}のどこへ移動する？（そこにいるカードはリムーブエリアへ）`:`${x.name} を${ZN[zone]}のどこへ移動する？`,null,x);
   if(!o) return false;
+  if(full){ const old=pl[zone][o.slot][pl[zone][o.slot].length-1]; if(old){ relocate(old,opp,'remove'); log(`${ZN[zone]}${o.slot+1}にいた ${old.name} をリムーブエリアへ。`,opp); } }
   const g=findCard(x.id); g.arr.splice(g.idx,1); pl[zone][o.slot].push(x);
   log(`${x.name} を${ZN[zone]}${o.slot+1}へ移動。`,1-opp); render(); return true;
 }
@@ -4514,6 +4517,10 @@ slotSelectP = function(opts,title,cancelLabel,anchor){
     }
     CPU.raidFront=false;
     cpuLog(o ? `${c?c.name:''}をフロントLへ。` : `${c?c.name:''}はエナジーLに残す${c&&isBackline(c)?'（エナジーLで働くキャラ）':'（エナジーが足りなくなる）'}。`,p);
+  } else if(/（そこにいるカードはリムーブエリアへ）$/.test(title)){
+    // 相手の効果でエナジーLが埋まっているのに移動させられる時：失って痛くない枠（発生エナジーが少ない、価値の低いカード）を選ぶ
+    o=opts.filter(x=>x.target).sort((a,b)=>genOf(a.target)-genOf(b.target) || cval(a.target)-cval(b.target))[0]||opts[0];
+    cpuLog(`${o.target?o.target.name:''}の枠に移動させる（${o.target?o.target.name:''}はリムーブエリアへ）。`,p);
   } else if(/を登場（レストで）させる枠か、レイドするキャラ/.test(title) && opts.some(x=>x.kind==='raid')){
     // 共通：効果で「登場かレイド」できるなら、フロントLのキャラにレイド（アクティブで前に出る）
     o=opts.filter(x=>x.kind==='raid').sort((a,b)=>hane2Avoid(p,a.target)-hane2Avoid(p,b.target) || (a.zone==='front'?0:1)-(b.zone==='front'?0:1) || cval(a.target)-cval(b.target))[0];
@@ -6835,7 +6842,7 @@ body.seat1 #P1{order:3} body.seat1 .board .divider{order:2} body.seat1 #P0{order
 #btnRejoin{display:none} body.netgame.seat1 #btnRejoin{display:inline-block}
 </style>
 <div id="netlobby"><div class="nlbox">
-  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-6</span></h2>
+  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-7</span></h2>
   <p>二人がそれぞれのスマホでこのページを開いて遊ぶ卓。ルールの処理は今の一人回し卓と同じ。<br>自分の手札・山札・ライフは相手の画面では裏向き。<br>つなぐ時だけ外の中継サーバー（PeerJS）を使う。</p>
   <label>名前</label><input id="nlName" maxlength="12" placeholder="名前">
   <label>使うデッキ</label><select id="nlDeck"></select>
