@@ -6975,6 +6975,7 @@ function begin(m, resume){
   seedRandom(m.seed); uid = 0;
   $('netlobby').hidden = true;
   newGame();
+  _st(fitReal, 200); _st(fitReal, 1200);
   if(NET.seat===0 && !resume) setTimeout(()=>{ const b=$('fr'); if(b) b.click(); }, 300);   // 先攻はランダム（同じ乱数なので両方の画面で同じになる）
 }
 
@@ -7031,7 +7032,21 @@ function join(code, quiet){
 }
 NET.rejoin = ()=>{ if(NET.seat===1 && NET.code) join(NET.code); };
 
-document.addEventListener('DOMContentLoaded', ()=>{});
+// 画面の高さに合わせる（対戦卓だけ）：カードの大きさを計算で決めたあと、実際に盤面がはみ出していたら、収まるまで小さくする
+//  （iPhone の Safari では文字や枠の高さが計算より大きく、下の手札の欄が見切れていた。2026-11-26 やしょっちの友達の端末）
+function fitReal(){
+  const root=document.documentElement, st=root.style, main=$('main'), board=document.querySelector('.board'); if(!main||!board) return;
+  st.height = innerHeight+'px'; document.body.style.height = innerHeight+'px';   // スマホのブラウザのバーを除いた、本当に見えている高さ
+  const over=()=>{ const ps=[...document.querySelectorAll('.player')]; const bottom=Math.max(...ps.map(x=>x.getBoundingClientRect().bottom)); return board.scrollHeight>main.clientHeight+1 || bottom>main.getBoundingClientRect().bottom+1; };
+  let ch=parseFloat(getComputedStyle(root).getPropertyValue('--ch'))||60;
+  for(let i=0;i<40 && over() && ch>30;i++){ ch-=2; const cw=Math.round(ch/1.4);
+    st.setProperty('--ch',ch+'px'); st.setProperty('--cw',cw+'px'); st.setProperty('--sw',(cw+12)+'px'); st.setProperty('--apw',(cw+12)+'px');
+    if(typeof S!=='undefined' && S) render(); }
+}
+NET.fit = fitReal;
+let fitT=0; const fitSoon=()=>{ _ct(fitT); fitT=_st(fitReal, 120); };
+addEventListener('resize', fitSoon); if(window.visualViewport) visualViewport.addEventListener('resize', fitSoon);
+addEventListener('orientationchange', ()=>_st(fitReal, 500));
 window.addEventListener('load', ()=>{
   const sel = $('nlDeck'); DECKS.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=d.label; sel.appendChild(o); });
   try{ const s=JSON.parse(localStorage.getItem('ua_online')||'null'); if(s){ $('nlName').value=s.n||''; if(DECKS.some(d=>d.id===s.d)) sel.value=s.d; } }catch(e){}
