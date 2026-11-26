@@ -6833,7 +6833,7 @@ body.seat1 #P1{order:3} body.seat1 .board .divider{order:2} body.seat1 #P0{order
 #btnRejoin{display:none} body.netgame.seat1 #btnRejoin{display:inline-block}
 </style>
 <div id="netlobby"><div class="nlbox">
-  <h2>ユニアリ対戦卓</h2>
+  <h2>ユニアリ対戦卓 <span style="font-size:11px;color:#889">版 11/26-4</span></h2>
   <p>二人がそれぞれのスマホでこのページを開いて遊ぶ卓。ルールの処理は今の一人回し卓と同じ。<br>自分の手札・山札・ライフは相手の画面では裏向き。<br>つなぐ時だけ外の中継サーバー（PeerJS）を使う。</p>
   <label>名前</label><input id="nlName" maxlength="12" placeholder="名前">
   <label>使うデッキ</label><select id="nlDeck"></select>
@@ -7037,7 +7037,11 @@ NET.rejoin = ()=>{ if(NET.seat===1 && NET.code) join(NET.code); };
 function fitReal(){
   const root=document.documentElement, st=root.style, main=$('main'), board=document.querySelector('.board'); if(!main||!board) return;
   st.height = innerHeight+'px'; document.body.style.height = innerHeight+'px';   // スマホのブラウザのバーを除いた、本当に見えている高さ
-  const over=()=>{ const ps=[...document.querySelectorAll('.player')]; const bottom=Math.max(...ps.map(x=>x.getBoundingClientRect().bottom)); return board.scrollHeight>main.clientHeight+1 || bottom>main.getBoundingClientRect().bottom+1; };
+  const hd=document.querySelector('header');
+  const over=()=>{   // 枠（ゾーン）の一番下が、下のボタンの帯（header）の上端か、盤面の下端を越えていたら、はみ出している
+    const limit=Math.min(main.getBoundingClientRect().bottom, hd?hd.getBoundingClientRect().top:Infinity, innerHeight);
+    const bottom=Math.max(...[...document.querySelectorAll('.board .zone, .board .player')].map(x=>x.getBoundingClientRect().bottom));
+    return board.scrollHeight>main.clientHeight+1 || bottom>limit+1; };
   let ch=parseFloat(getComputedStyle(root).getPropertyValue('--ch'))||60;
   for(let i=0;i<40 && over() && ch>30;i++){ ch-=2; const cw=Math.round(ch/1.4);
     st.setProperty('--ch',ch+'px'); st.setProperty('--cw',cw+'px'); st.setProperty('--sw',(cw+12)+'px'); st.setProperty('--apw',(cw+12)+'px');
@@ -7047,6 +7051,7 @@ NET.fit = fitReal;
 let fitT=0; const fitSoon=()=>{ _ct(fitT); fitT=_st(fitReal, 120); };
 addEventListener('resize', fitSoon); if(window.visualViewport) visualViewport.addEventListener('resize', fitSoon);
 addEventListener('orientationchange', ()=>_st(fitReal, 500));
+setInterval(()=>{ if(NET.started) fitReal(); }, 2000);   // 文字の読み込みなどで後から高さが変わることがある
 window.addEventListener('load', ()=>{
   const sel = $('nlDeck'); DECKS.forEach(d=>{ const o=document.createElement('option'); o.value=d.id; o.textContent=d.label; sel.appendChild(o); });
   try{ const s=JSON.parse(localStorage.getItem('ua_online')||'null'); if(s){ $('nlName').value=s.n||''; if(DECKS.some(d=>d.id===s.d)) sel.value=s.d; } }catch(e){}
