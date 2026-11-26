@@ -6837,10 +6837,9 @@ body.seat1 #P1{order:3} body.seat1 .board .divider{order:2} body.seat1 #P0{order
   <p>二人がそれぞれのスマホでこのページを開いて遊ぶ卓。ルールの処理は今の一人回し卓と同じ。<br>自分の手札・山札・ライフは相手の画面では裏向き。<br>つなぐ時だけ外の中継サーバー（PeerJS）を使う。</p>
   <label>名前</label><input id="nlName" maxlength="12" placeholder="名前">
   <label>使うデッキ</label><select id="nlDeck"></select>
-  <button id="nlHost" class="big">部屋を作る</button>
-  <div class="or">または、相手の部屋に入る</div>
-  <input id="nlCode" inputmode="numeric" maxlength="6" placeholder="部屋番号（6けた）">
-  <button id="nlJoin" class="big">部屋に入る</button>
+  <label>部屋番号（6けた）</label><input id="nlCode" inputmode="numeric" maxlength="6" placeholder="作る時は空なら自動で決まる">
+  <button id="nlHost" class="big">この番号で部屋を作る</button>
+  <button id="nlJoin" class="big">この番号の部屋に入る</button>
   <div id="nlStatus"></div><div id="nlStatus2"></div>
 </div></div>
 <div id="netban" hidden></div>
@@ -7002,12 +7001,12 @@ function wire(c){
   c.on('close', ()=>{ NET.warn='相手との接続が切れた。'+(NET.seat?'メニューの「つなぎ直す」で戻れる。':'相手がつなぎ直すのを待っている。'); shield(); status('接続が切れた。'); });
   c.on('error', e=>status('通信エラー：'+(e&&e.type||e)));
 }
-function host(tries=0){
-  const code = String(Math.floor(100000+Math.random()*900000));
+function host(tries=0, want=null){
+  const code = want || String(Math.floor(100000+Math.random()*900000));
   NET.peer = new Peer('uaonline-'+code);
   NET.peer.on('open', ()=>{ NET.code=code; status(`部屋番号 ${code}`); $('nlStatus2').textContent='この番号を相手に伝えて、待っていて。'; });
   NET.peer.on('connection', c=>{ if(NET.conn && NET.conn.open){ c.close(); return; } wire(c); });
-  NET.peer.on('error', e=>{ if(e.type==='unavailable-id' && tries<5){ NET.peer.destroy(); host(tries+1); } else status('エラー：'+e.type); });
+  NET.peer.on('error', e=>{ if(e.type==='unavailable-id' && want){ NET.peer.destroy(); status('その部屋番号は今ほかで使われている。別の番号にして。'); $('nlHost').disabled=$('nlJoin').disabled=false; } else if(e.type==='unavailable-id' && tries<5){ NET.peer.destroy(); host(tries+1); } else status('エラー：'+e.type); });
 }
 function join(code){
   NET.code = code;
@@ -7023,7 +7022,7 @@ window.addEventListener('load', ()=>{
   try{ const s=JSON.parse(localStorage.getItem('ua_online')||'null'); if(s){ $('nlName').value=s.n||''; if(DECKS.some(d=>d.id===s.d)) sel.value=s.d; } }catch(e){}
   const remember = ()=>{ try{ localStorage.setItem('ua_online', JSON.stringify({n:$('nlName').value.trim(), d:+sel.value})); }catch(e){} };
   const ready = ()=>{ if(typeof Peer==='undefined'){ status('つなぐための部品が読めなかった。インターネットにつながっているか確かめて。'); return false; } NET.names[NET.seat]=$('nlName').value.trim()||(NET.seat?'ゲスト':'ホスト'); remember(); return true; };
-  $('nlHost').onclick = ()=>{ NET.seat=0; if(!ready()) return; $('nlHost').disabled=$('nlJoin').disabled=true; host(); };
+  $('nlHost').onclick = ()=>{ const w=$('nlCode').value.trim(); if(w && !/^\d{6}$/.test(w)) return status('部屋番号は6けたの数字（空なら自動で決める）。'); NET.seat=0; if(!ready()) return; $('nlHost').disabled=$('nlJoin').disabled=true; host(0, w||null); };
   $('nlJoin').onclick = ()=>{ const c=$('nlCode').value.trim(); if(!/^\d{6}$/.test(c)) return status('部屋番号は6けたの数字。'); NET.seat=1; if(!ready()) return; $('nlHost').disabled=$('nlJoin').disabled=true; join(c); };
   $('btnRejoin').onclick = ()=>NET.rejoin();
 });
